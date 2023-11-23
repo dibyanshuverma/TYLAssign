@@ -1,0 +1,55 @@
+parameters:
+  container_name: terraformStateContainer
+  container_key: environment/dev/core/dev_depoyment/deployment.tfstate
+  environment_name: dev
+  service_connection_name: pipeline_service_connection_dev
+  tfvarsFile: \environment\dev\core\dev_deployment\terraform.tfvars
+  root_directory: \environment\dev\core\dev_deployment
+  backend_resource_group: spoke-vnet-rg
+  backend_storage_account_name: demo-stoarge-account
+  destroy: ${{parameters.destroy}}
+
+stages:
+- stage: validate
+  jobs:
+  - template: validate.yml
+    parameters:
+      container_name: ${{parameters.container_name}}
+      container_key: ${{parameters.container_key}}
+      environment_name: ${{parameters.environment_name}}
+      tfvarsFile: ${{parameters.tfvarsFile}}
+      root_directory: ${{parameters.root_directory}}
+      service_connection_name: ${{parameters.service_connection_name}}
+      backend_resource_group: ${{parameters.backend_resource_group}}
+      backend_storage_account_name: ${{parameters.backend_storage_account_name}}
+      destroy: ${{parameters.destroy}}
+- stage: deploy
+  conditon: in(dependencies.validate.result,'Succeeded','Success')
+  continueOnError: falses
+  jobs:
+  - deployment: dev
+    environment_name: ${{parameters.environment_name}}
+    strtategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: deployment.yml
+            parameters:
+              container_name: ${{parameters.container_name}}
+              container_key: ${{parameters.container_key}}
+              environment_name: ${{parameters.environment_name}}
+              tfvarsFile: ${{parameters.tfvarsFile}}
+              root_directory: ${{parameters.root_directory}}
+              service_connection_name: ${{parameters.service_connection_name}}
+              backend_resource_group: ${{parameters.backend_resource_group}}
+              backend_storage_account_name: ${{parameters.backend_storage_account_name}}
+              destroy: ${{parameters.destroy}}
+
+
+
+
+
+
+
+
+

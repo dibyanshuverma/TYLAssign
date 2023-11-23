@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: example-application
+  namespace: default
+spec:
+  destination:
+    server: 'my-k8s-serv' # The Kubernetes API server address
+    namespace: 'demo-app-ns' # The namespace where the application will be deployed
+  project: default
+  source:
+    repoURL: 'https://github.com/dibyanshuverma/TYLAssign.git' # URL of your Git repository
+    path: 'deno-app-manifest/manifest.yaml' # Path within the Git repository where your manifests are located
+    targetRevision: 'main' # Git branch, tag, or commit SHA to deploy
+  syncPolicy:
+    automated:
+      prune: false # Remove resources not specified in Git
+      selfHeal: false # Automatically reapply manifests if they drift from the desired state

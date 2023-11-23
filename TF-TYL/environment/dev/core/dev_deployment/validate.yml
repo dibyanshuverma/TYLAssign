@@ -1,0 +1,50 @@
+parameters:
+  container_name:
+  container_key:
+  environment_name:
+  tfvarsFile:
+  root_directory:
+  service_connection_name:
+  backend_resource_group:
+  backend_storage_account_name:
+
+'jobs:':
+- job: Validate
+  pool: Default
+  steps:
+  - task: TerraformTaskV1@0
+    inputs:
+      terraformVersion: 0.14.0
+  - task: TerraformTaskV1@0
+    displayName: terraform init
+    input:
+      provider: azurerm
+      command: init
+      workingDirectory: ${{parameter.root_directory}}
+      backendServiceArm: ${{parameter.service_connection_name}}
+      backendAzureRmResourceGroupName: ${{parameter.backend_resource_group}}
+      backendAzureRmStorageAccountsName: ${{parameter.backend_storage_account}}
+      backendAzureRmContainerName: ${{parameter.container_name}}
+      backendAzureRmKey: ${{parameter.container_key}}
+
+  - task: TerraformTaskV1@0
+    displayName: Terraform plan
+    input:
+      provider: azurerm
+      command: plan
+      workingDirectory: ${{parameter.root_directory}}
+      ${{if eq(parameters.destroy,false)}}:
+        commandOptions: "--var-files=$(workingDirectory)/${{parameters.tfvarsFile}} --out=$(workingDirectory)${{parameters.root_directory}}//plan.tfplan"
+      environmentServiceNameArm: ${{parameter.service_connection_name}}
+  
+  - task: UseDotNet@2
+    inputs:
+      packageType: 'sdk'
+      version: '2.1.x'
+      installationPath: $(Agent.ToolsDirectory)/dotnet
+      script: |         
+        wget https://github.com/terraform-linters/tflint/releases/download/v0.29.0/tflint.zip
+        unzip tflint_linux_amd64.zip -d $(Agent.ToolsDirectory)/tflint  
+        cd $(System.DefaultWorkingDirectory)/${{parameter.root_directory}}
+        tflint                                     
+

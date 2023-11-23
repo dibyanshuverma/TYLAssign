@@ -1,0 +1,95 @@
+pipeline {
+  agent {
+    docker {
+      image 'adoptopenjdk:latest' 
+	  args '-v TYLAssignment/workspace:/var/jenkins_home/workspace' // mounting my workspace to container worspace
+    }
+  }
+  options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        sh 'echo passed'
+		checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/dibyanshuverma/TYLAssign.git']]]) 
+      }
+    }
+    stage('Build and Test') {
+      steps {
+        sh 'ls -ltr'
+        
+        sh 'cd TYLAssignment/demo-app && mvn clean package'
+		    sh 'mvn test -Dcucumber.options="--tags @bdd"'
+      }
+    }
+    stage('Static Code Analysis') {
+      environment {
+        SONAR_URL = "http://localhost:9000"
+      }
+      steps {
+        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
+          sh 'cd TYLAssignment/demo-app && mvn sonar:sonar -Dsonar.login=$SONAR_AUTH_TOKEN -Dsonar.host.url=${SONAR_URL}'
+        }
+      }
+    }
+	
+	stage('Sonar Gating') {
+            steps {
+                timeout(time: 30, unit: 'MINUTES') {
+                      waitForQualityGate abortPipeline: true
+
+                }
+            }
+        }
+    
+	
+    stage('Build and Push Docker Image') {   
+	  environment {
+        // Define environment variables as needed
+        DOCKER_HUB_USERNAME = credentials('dibyanshu.verma')
+        DOCKER_HUB_PASSWORD = credentials('docker-credentials')
+        DOCKER_IMAGE_NAME = 'dibyanshu.verma/demo-app'
+        DOCKER_IMAGE_TAG = "latest-${github.sha}"
+      }
+     	  
+	  steps {
+        script {
+            // Build Docker image
+            sh "cd TYLAssignment/demo-app && docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+
+            // Login to Docker Hub
+            sh "docker login -u ${DOCKER_HUB_USERNAME} -p ${DOCKER_HUB_PASSWORD}"
+
+            // Push Docker image to Docker Hub
+            sh "docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+            }
+        
+    }
+    }
+    stage('Update Deployment File') {
+        environment {
+            GIT_REPO_NAME = "TYLAssign"
+            GIT_USER_NAME = "dibyanshuverma"
+        }
+        steps {
+            withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                sh '''
+                    git config user.email "dibyanshu.verma@gmail.com"
+                    git config user.name "dibyanshu verma"
+                    BUILD_NUMBER=${BUILD_NUMBER}
+                    sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" TYLAssignment/demo-app-manifests/deployment.yml
+                    git add TYLAssignment/demo-app-manifests/deployment.yml
+                    git commit -m "Updated image to version ${BUILD_NUMBER}"
+                    git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                '''
+            }
+        }
+    }
+  }
+  post {
+        always {
+            
+            archiveArtifacts 'target/*.jar'
+      }
+}
